@@ -15,8 +15,11 @@ from parser import *
 from utils import load_jsonl
 from python_executor import PythonExecutor
 
-def evaluate(benchmark: str, dataset_id: str, dataset_config: str = None, dataset_split: str = "test", dataset_col: str = "pred", samples: list=None, max_num_samples=None):
-    samples = load_dataset(dataset_id, name=dataset_config, split=dataset_split)
+def evaluate(benchmark: str, dataset_id: str, dataset_config: str = None, dataset_split: str = "test", dataset_col: str = "pred", samples: list=None, max_num_samples=None, data_files: str = None):
+    if data_files:
+        samples = load_dataset('json', data_files=data_files, split=dataset_split)
+    else:
+        samples = load_dataset(dataset_id, name=dataset_config, split=dataset_split)
     if "idx" not in samples.column_names:
         samples = samples.map(lambda x, idx: {"idx": idx}, with_indices=True)
         
@@ -74,6 +77,7 @@ def parse_args():
     parser.add_argument("--dataset_split", type=str, default="train")
     parser.add_argument("--max_num_samples", type=int, default=None)
     parser.add_argument("--voting_n", type=int, nargs='+', required=True)
+    parser.add_argument("--dataset_file_path", type=str, default=None)
     args = parser.parse_args()
     return args
 
@@ -91,8 +95,11 @@ if __name__ == "__main__":
                 dataset_split=args.dataset_split,
                 dataset_col=f"pred_{agg}@{n}",
                 max_num_samples=args.max_num_samples,
+                data_files=args.dataset_file_path,
             )
             local_data[f"acc_{agg}"] = scores["acc"]
+            print(f'scores: {scores}')
+            print(f"local_data: {local_data}")
         return local_data
 
     with ProcessPoolExecutor() as executor:
@@ -111,5 +118,8 @@ if __name__ == "__main__":
 
     # Save results
     ds = Dataset.from_dict(data)
+    print(ds)
+    print(args.dataset_id)
+    print(f"{args.dataset_config}--evals")
     url = ds.push_to_hub(args.dataset_id, config_name=f"{args.dataset_config}--evals")
     print(f"Results pushed to {url}")
