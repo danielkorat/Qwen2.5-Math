@@ -1,4 +1,5 @@
 import argparse
+import json
 import numpy as np
 from tqdm import tqdm
 from pebble import ProcessPool
@@ -66,13 +67,13 @@ def evaluate(benchmark: str, dataset_id: str, dataset_config: str = None, datase
         "acc": mean_score
     }
 
-    print(result_json)
+    print(json.dumps(result_json, indent=2))
     return samples, result_json
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--benchmark", type=str, default="math")
-    parser.add_argument("--dataset_id", type=str, required=True)
+    parser.add_argument("--dataset_id", type=str, default=None)
     parser.add_argument("--dataset_config", type=str, default=None)
     parser.add_argument("--dataset_split", type=str, default="train")
     parser.add_argument("--max_num_samples", type=int, default=None)
@@ -118,8 +119,7 @@ if __name__ == "__main__":
 
     # Save results
     ds = Dataset.from_dict(data)
-    print(ds)
-    print(args.dataset_id)
     print(f"{args.dataset_config}--evals")
-    url = ds.push_to_hub(args.dataset_id, config_name=f"{args.dataset_config}--evals")
-    print(f"Results pushed to {url}")
+    if args.dataset_id is not None:
+        url = ds.push_to_hub(args.dataset_id, config_name=f"{args.dataset_config}--evals")
+        print(f"Results pushed to {url}")
