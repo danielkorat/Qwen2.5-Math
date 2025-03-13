@@ -1,5 +1,6 @@
 import argparse
 import json
+import traceback
 import numpy as np
 from tqdm import tqdm
 from pebble import ProcessPool
@@ -10,17 +11,18 @@ import pandas as pd
 from datasets import Dataset
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
+from datasets import disable_caching
+disable_caching()
+
 from grader import *
 
 from parser import *
 from utils import load_jsonl
 from python_executor import PythonExecutor
 
-def evaluate(benchmark: str, dataset_id: str, dataset_config: str = None, dataset_split: str = "test", dataset_col: str = "pred", samples: list=None, max_num_samples=None, data_files: str = None):
-    if data_files:
-        samples = load_dataset('json', data_files=data_files, split=dataset_split)
-    else:
-        samples = load_dataset(dataset_id, name=dataset_config, split=dataset_split)
+def evaluate(benchmark: str, dataset_split: str = "test", dataset_col: str = "pred", samples: list=None, max_num_samples=None, completions_file: str = None):
+    samples = load_dataset('json', data_files=completions_file, split=dataset_split, download_mode="force_redownload")
+
     if "idx" not in samples.column_names:
         samples = samples.map(lambda x, idx: {"idx": idx}, with_indices=True)
         
@@ -73,12 +75,12 @@ def evaluate(benchmark: str, dataset_id: str, dataset_config: str = None, datase
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--benchmark", type=str, default="math")
-    parser.add_argument("--dataset_id", type=str, default=None)
-    parser.add_argument("--dataset_config", type=str, default=None)
+    parser.add_argument("--push_results_to", type=str, default=None)
+    parser.add_argument("--results_config", type=str, default=None)
     parser.add_argument("--dataset_split", type=str, default="train")
     parser.add_argument("--max_num_samples", type=int, default=None)
     parser.add_argument("--voting_n", type=int, nargs='+', required=True)
-    parser.add_argument("--dataset_file_path", type=str, default=None)
+    parser.add_argument("--completions_file", type=str, default=None)
     args = parser.parse_args()
     return args
 
@@ -91,12 +93,10 @@ if __name__ == "__main__":
         for agg in ["naive", "weighted", "maj"]:
             _, scores = evaluate(
                 benchmark=args.benchmark,
-                dataset_id=args.dataset_id,
-                dataset_config=args.dataset_config,
                 dataset_split=args.dataset_split,
                 dataset_col=f"pred_{agg}@{n}",
                 max_num_samples=args.max_num_samples,
-                data_files=args.dataset_file_path,
+                completions_file=args.completions_file,
             )
             local_data[f"acc_{agg}"] = scores["acc"]
             print(f'scores: {scores}')
@@ -115,11 +115,13 @@ if __name__ == "__main__":
                     data["acc_maj"].append(result["acc_maj"])
                 except Exception as e:
                     print(f"Error processing n={futures[future]}: {e}")
+                    traceback.print_exc()
+                    
                 progress_bar.update(1)
 
     # Save results
     ds = Dataset.from_dict(data)
-    print(f"{args.dataset_config}--evals")
-    if args.dataset_id is not None:
-        url = ds.push_to_hub(args.dataset_id, config_name=f"{args.dataset_config}--evals")
-        print(f"Results pushed to {url}")
+    print(f"{args.results_config}--evals")
+
+    url = ds.push_to_hub(args.push_results_to, config_name=f"{args.results_config}--evals")
+    print(f"Results pushed to {url}")
